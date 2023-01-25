@@ -1,8 +1,6 @@
 //! This binary just splits the parameters up into separate files.
 
-extern crate blake2_rfc;
 extern crate pairing;
-extern crate phase2;
 extern crate rand;
 
 use std::fs::File;
@@ -12,14 +10,14 @@ fn main() {
     let current_params = File::open("params").expect("couldn't open `./params`");
     let mut current_params = BufReader::with_capacity(1024 * 1024, current_params);
 
-    let sapling_spend = phase2::MPCParameters::read(&mut current_params, false)
+    let sapling_spend = ironfish_phase2::MPCParameters::read(&mut current_params, false)
         .expect("couldn't deserialize Sapling Spend params");
 
-    let sapling_output = phase2::MPCParameters::read(&mut current_params, false)
+    let sapling_output = ironfish_phase2::MPCParameters::read(&mut current_params, false)
         .expect("couldn't deserialize Sapling Output params");
 
-    let sprout_joinsplit = phase2::MPCParameters::read(&mut current_params, false)
-        .expect("couldn't deserialize Sprout JoinSplit params");
+    let sapling_mint = ironfish_phase2::MPCParameters::read(&mut current_params, false)
+        .expect("couldn't deserialize Sapling Mint params");
 
     {
         let f =
@@ -40,11 +38,11 @@ fn main() {
     }
 
     {
-        let f = File::create("sprout-groth16.params")
-            .expect("couldn't create `./sapling-groth16.params`");
+        let f =
+            File::create("sapling-mint.params").expect("couldn't create `./sapling-mint.params`");
         let mut f = BufWriter::with_capacity(1024 * 1024, f);
-        sprout_joinsplit
+        sapling_mint
             .write(&mut f)
-            .expect("couldn't write new Sprout JoinSplit params");
+            .expect("couldn't write new Sapling Mint params");
     }
 }

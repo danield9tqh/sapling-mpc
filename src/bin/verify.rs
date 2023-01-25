@@ -1,97 +1,66 @@
-extern crate blake2_rfc;
 extern crate pairing;
-extern crate phase2;
-extern crate sapling_crypto;
 
-use blake2_rfc::blake2b::Blake2b;
+use blake2::{Blake2b512, Digest};
 use std::fs::File;
 use std::io::BufReader;
 
 fn main() {
-    let jubjub_params = sapling_crypto::jubjub::JubjubBls12::new();
-
     let params = File::open("params").unwrap();
     let mut params = BufReader::with_capacity(1024 * 1024, params);
 
-    let sapling_spend = phase2::MPCParameters::read(&mut params, true)
+    let sapling_spend = ironfish_phase2::MPCParameters::read(&mut params, true)
         .expect("couldn't deserialize Sapling Spend params");
 
-    let sapling_output = phase2::MPCParameters::read(&mut params, true)
+    let sapling_output = ironfish_phase2::MPCParameters::read(&mut params, true)
         .expect("couldn't deserialize Sapling Output params");
 
-    let sprout_joinsplit = phase2::MPCParameters::read(&mut params, true)
-        .expect("couldn't deserialize Sprout JoinSplit params");
+    let sapling_mint = ironfish_phase2::MPCParameters::read(&mut params, true)
+        .expect("couldn't deserialize Sapling Mint params");
 
     let sapling_spend_contributions = sapling_spend
-        .verify(sapling_crypto::circuit::sapling::Spend {
-            params: &jubjub_params,
+        .verify(ironfish_zkp::proofs::Spend {
             value_commitment: None,
             proof_generation_key: None,
             payment_address: None,
             commitment_randomness: None,
             ar: None,
-            auth_path: vec![None; 32], // Tree depth is 32 for sapling
+            auth_path: vec![None; ironfish_zkp::constants::TREE_DEPTH],
             anchor: None,
+            asset_generator: None,
+            sender_address: None,
         })
         .expect("parameters are invalid");
 
     let sapling_output_contributions = sapling_output
-        .verify(sapling_crypto::circuit::sapling::Output {
-            params: &jubjub_params,
+        .verify(ironfish_zkp::proofs::Output {
             value_commitment: None,
             payment_address: None,
             commitment_randomness: None,
             esk: None,
+            asset_generator: None,
+            ar: None,
+            proof_generation_key: None,
         })
         .expect("parameters are invalid");
 
-    let sprout_joinsplit_contributions = sprout_joinsplit
-        .verify(sapling_crypto::circuit::sprout::JoinSplit {
-            vpub_old: None,
-            vpub_new: None,
-            h_sig: None,
-            phi: None,
-            inputs: vec![
-                sapling_crypto::circuit::sprout::JSInput {
-                    value: None,
-                    a_sk: None,
-                    rho: None,
-                    r: None,
-                    auth_path: [None; 29], // Depth is 29 for Sprout
-                },
-                sapling_crypto::circuit::sprout::JSInput {
-                    value: None,
-                    a_sk: None,
-                    rho: None,
-                    r: None,
-                    auth_path: [None; 29], // Depth is 29 for Sprout
-                },
-            ],
-            outputs: vec![
-                sapling_crypto::circuit::sprout::JSOutput {
-                    value: None,
-                    a_pk: None,
-                    r: None,
-                },
-                sapling_crypto::circuit::sprout::JSOutput {
-                    value: None,
-                    a_pk: None,
-                    r: None,
-                },
-            ],
-            rt: None,
+    let sapling_mint_contributions = sapling_mint
+        .verify(ironfish_zkp::proofs::MintAsset {
+            name: [0u8; 32],
+            metadata: [0u8; 77],
+            proof_generation_key: None,
+            public_key_randomness: None,
         })
         .expect("parameters are invalid");
 
     for ((a, b), c) in sapling_spend_contributions
         .into_iter()
         .zip(sapling_output_contributions.into_iter())
-        .zip(sprout_joinsplit_contributions)
+        .zip(sapling_mint_contributions)
     {
-        let mut h = Blake2b::new(64);
-        h.update(&a);
-        h.update(&b);
-        h.update(&c);
+        let mut h = Blake2b512::new();
+        h.update(a);
+        h.update(b);
+        h.update(c);
         let h = h.finalize();
 
         println!("{}", into_hex(h.as_ref()));
@@ -101,7 +70,7 @@ fn main() {
 fn into_hex(h: &[u8]) -> String {
     let mut f = String::new();
 
-    for byte in &h[..] {
+    for byte in h {
         f += &format!("{:02x}", byte);
     }
 
